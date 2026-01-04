@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tanzim Brothers | পাইকারি ও খুচরা বিক্রেতা</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="landing-page">
+        <nav class="navbar">
+            <div class="container nav-row">
+                <div class="logo">TANZIM<span>BROTHERS</span></div>
+                <div class="nav-links">
+                    <a href="#home">হোম</a>
+                    <a href="#products">পণ্যসমূহ</a>
+                    <button class="btn-admin-login" id="open-login-btn">অ্যাডমিন লগইন</button>
+                </div>
+            </div>
+        </nav>
+
+        <header id="home" class="hero">
+            <div class="container hero-grid">
+                <div class="hero-content">
+                    <h1>মুদি পণ্যের<span> নির্ভরযোগ্য প্রতিষ্ঠান</span></h1>
+                    <p>মসলা-সহ যাবতীয় নিত্যপ্রয়োজনীয় পণ্য পাইকারি মূল্যে সরাসরি আপনার প্রতিষ্ঠানে পৌঁছে দেয় তানজিম ব্রাদার্স।</p>
+                    <a href="#products" class="btn-main">পণ্য তালিকা দেখুন</a>
+                </div>
+                <div class="hero-img">
+                    <img src="https://images.tv9bangla.com/wp-content/uploads/2023/09/masala-7.jpg" alt="Tanzim Brothers">
+                </div>
+            </div>
+        </header>
+    </div>
+
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="close-login-btn">&times;</span>
+            <h2>অ্যাডমিন প্যানেল</h2>
+            <div class="input-group">
+                <label>ইমেইল</label>
+                <input type="email" id="admin-email" placeholder="admin@tanzim.com">
+            </div>
+            <div class="input-group">
+                <label>পাসওয়ার্ড</label>
+                <input type="password" id="admin-password" placeholder="******">
+            </div>
+            <button class="btn-submit" id="login-btn">প্রবেশ করুন</button>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
