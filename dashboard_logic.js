@@ -1,8 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, where, doc, updateDoc, deleteDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, where, doc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyBEo-hTWKMww8C1XAG6Hh0wxNVHvk_sTzM",
     authDomain: "tanzimbrothers.firebaseapp.com",
@@ -16,7 +15,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ১. লগইন চেক
+let allCustomers = []; // লোকাল ডাটা রাখার জন্য
+
+function convertToEnglish(str) {
+    const bNums = {'০':'0','১':'1','২':'2','৩':'3','৪':'4','৫':'5','৬':'6','৭':'7','৮':'8','৯':'9'};
+    return String(str).replace(/[০-৯]/g, m => bNums[m]);
+}
+
 onAuthStateChanged(auth, (user) => {
     if (!user) window.location.href = "index.html";
     else loadData();
@@ -24,161 +29,155 @@ onAuthStateChanged(auth, (user) => {
 
 document.getElementById('logout-btn').onclick = () => signOut(auth);
 
-// ২. টেবিল ফিল্টার লজিক (লেনদেন আইডি ফিল্ডে লিখলে টেবিল আপডেট হবে)
-document.getElementById('t-id').addEventListener('input', (e) => {
-    const searchValue = e.target.value.toLowerCase();
-    const tableRows = document.querySelectorAll('#customer-table-body tr');
-
-    tableRows.forEach(row => {
-        const customerId = row.querySelector('td:first-child').innerText.toLowerCase();
-        // যদি আইডি মিলে যায় তবে দেখাবে, না মিললে হাইড করে দিবে
-        if (customerId.includes(searchValue)) {
-            row.style.display = "";
-            row.style.backgroundColor = searchValue !== "" ? "#fff7ed" : ""; // হাইলাইট করার জন্য
-        } else {
-            row.style.display = "none";
-        }
-    });
-});
-
-// ৩. নতুন কাস্টমার সেভ
+// ১. নতুন কাস্টমার সেভ
 document.getElementById('add-customer-btn').onclick = async () => {
     const name = document.getElementById('c-name').value.trim();
     const shop = document.getElementById('c-shop').value.trim();
     const cid = document.getElementById('c-id').value.trim();
-    const phone = document.getElementById('c-phone').value.trim();
+    const phone = convertToEnglish(document.getElementById('c-phone').value.trim());
 
-    if(!name || !cid) return alert("নাম এবং আইডি অবশ্যই দিন!");
-
+    if(!name || !cid) return alert("নাম এবং আইডি দিন!");
     const q = query(collection(db, "customers"), where("customId", "==", cid));
     const checkId = await getDocs(q);
-    if(!checkId.empty) return alert("এই আইডিটি ইতিমধ্যে ব্যবহৃত হয়েছে!");
+    if(!checkId.empty) return alert("এই আইডিটি ব্যবহৃত হয়েছে!");
 
-    try {
-        await addDoc(collection(db, "customers"), {
-            name, shop, customId: cid, phone, totalDue: 0, date: new Date()
-        });
-        alert("কাস্টমার সেভ হয়েছে!");
-        ['c-name', 'c-shop', 'c-id', 'c-phone'].forEach(id => document.getElementById(id).value = '');
-    } catch (e) { alert("Error: " + e.message); }
+    await addDoc(collection(db, "customers"), { name, shop, customId: cid, phone, totalDue: 0, date: new Date() });
+    alert("সেভ হয়েছে!");
 };
 
-// ৪. সার্চ লজিক (প্রোফাইল + ইতিহাস)
-// --- ৩. অ্যাডভান্সড সার্চ লজিক (ID, Name, Shop, or Phone) ---
+// ২. কাস্টমার সার্চ ও প্রোফাইল এডিট (ইতিহাস সহ)
+let currentEditDocId = null; 
+
 document.getElementById('search-btn').onclick = async () => {
     const input = document.getElementById('search-id').value.trim().toLowerCase();
-    if(!input) return alert("সার্চ করার জন্য কিছু লিখুন (নাম/আইডি/দোকান/ফোন)");
+    const englishInput = convertToEnglish(input);
 
-    // ১. প্রথমে সব কাস্টমার ডাটা নেওয়া (সার্চ করার জন্য)
-    const querySnapshot = await getDocs(collection(db, "customers"));
-    let targetCustomer = null;
+    if(!input) return alert("সার্চ করার জন্য কিছু লিখুন");
 
-    // ২. লুপ চালিয়ে ম্যাচিং কাস্টমার খুঁজে বের করা
-    querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (
-            data.customId.toLowerCase() === input || 
-            data.name.toLowerCase().includes(input) || 
-            (data.shop && data.shop.toLowerCase().includes(input)) || 
-            (data.phone && data.phone.includes(input))
-        ) {
-            targetCustomer = { id: doc.id, ...data };
+    const snap = await getDocs(collection(db, "customers"));
+    let target = null;
+
+    snap.forEach((d) => {
+        const data = d.data();
+        const matchID = data.customId && data.customId.toLowerCase() === input;
+        const matchName = data.name && data.name.toLowerCase().includes(input);
+        const matchPhone = data.phone && (data.phone.includes(input) || data.phone.includes(englishInput));
+
+        if (matchID || matchName || matchPhone) {
+            target = { id: d.id, ...data };
         }
     });
 
-    if(!targetCustomer) return alert("এই তথ্য দিয়ে কোনো কাস্টমার পাওয়া যায়নি!");
+    if(!target) return alert("কাস্টমার পাওয়া যায়নি");
 
-    // ৩. প্রোফাইল UI আপডেট
-    const sid = targetCustomer.customId; // হিস্ট্রি খোঁজার জন্য আইডিটি নিয়ে রাখা
+    currentEditDocId = target.id;
     document.getElementById('search-output').style.display = 'block';
+    document.getElementById('update-action-area').style.display = 'block';
+    
+    // প্রোফাইল এডিট ডিজাইন
     document.getElementById('customer-profile-info').innerHTML = `
-        <div><strong>Customer Name:</strong> ${targetCustomer.name}</div>
-        <div><strong>Dokaner Name:</strong> ${targetCustomer.shop || 'N/A'}</div>
-        <div><strong>Customer ID:</strong> ${targetCustomer.customId}</div>
-        <div><strong>Mobile:</strong> ${targetCustomer.phone || 'N/A'}</div>
-        <div style="grid-column: 1 / -1; margin-top:10px;">
-            <strong>Current Due:</strong> <span style="color:red; font-weight:bold; font-size:1.2rem;">${targetCustomer.totalDue} ৳</span>
+        <div class="profile-grid">
+            <div class="edit-group"><label>দোকানের নাম:</label><input type="text" id="e-name" value="${target.name}"></div>
+            <div class="edit-group"><label>কাস্টমারের নাম:</label><input type="text" id="e-shop" value="${target.shop || ''}"></div>
+            <div class="edit-group"><label>মোবাইল:</label><input type="text" id="e-phone" value="${target.phone || ''}"></div>
         </div>
-    `;
+        <div class="status-info-bar">
+            <span >🆔 আইডি: <span style = "font-weight:bold;"> ${target.customId}</span></span> | <span>💰 বকেয়া: <span style="color:red;font-weight:bold;">${target.totalDue} ৳</span></span>
+        </div>`;
 
-    // ৪. ওই কাস্টমারের লেনদেন ইতিহাস (Transactions) খুঁজে বের করা
-    try {
-        const tq = query(collection(db, "transactions"), where("cId", "==", sid));
-        const transSnap = await getDocs(tq);
-        
-        let historyHtml = "";
-        if(transSnap.empty) {
-            historyHtml = "<p style='color:gray; text-align:center; padding:10px;'>এখনো কোনো লেনদেনের ইতিহাস নেই।</p>";
-        } else {
-            const docs = transSnap.docs.map(d => d.data()).sort((a, b) => b.ts - a.ts);
-            docs.forEach(d => {
-                const badge = d.type === 'due' ? 'badge-due' : 'badge-paid';
-                const label = d.type === 'due' ? 'মাল দিলাম (+)' : 'টাকা পেলাম (-)';
-                historyHtml += `
-                    <div class="history-item" style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #eee;">
-                        <div>
-                            <span class="${badge}">${label}</span><br>
-                            <small style="color:gray;">${d.time}</small>
-                        </div>
-                        <div style="font-weight:bold;">${d.amount} ৳</div>
-                    </div>`;
-            });
-        }
-        document.getElementById('history-list').innerHTML = historyHtml;
-    } catch (e) { 
-        console.error("History Error:", e);
-        document.getElementById('history-list').innerHTML = "ইতিহাস লোড করতে সমস্যা হয়েছে।";
-    }
+    // ইতিহাস লোড (এটি ঠিক করা হয়েছে)
+    const tq = query(collection(db, "transactions"), where("cId", "==", target.customId));
+    const tSnap = await getDocs(tq);
+    let hHtml = "";
+    const sortedHistory = tSnap.docs.map(d => d.data()).sort((a,b) => b.ts - a.ts);
+    
+    sortedHistory.forEach(d => {
+        hHtml += `
+            <div class="history-item">
+                <div>
+                    <span class="${d.type==='due'?'badge-due':'badge-paid'}">${d.type==='due'?'বাকি (+)':'জমা (-)'}</span>
+                    <br><small>${d.time}</small>
+                </div>
+                <strong>${d.amount} ৳</strong>
+            </div>`;
+    });
+    document.getElementById('history-list').innerHTML = hHtml || "<p style='padding:10px;'>কোনো লেনদেনের ইতিহাস নেই</p>";
+    document.getElementById('search-output').scrollIntoView({ behavior: 'smooth' });
 };
 
-// ৫. কাস্টমার লিস্ট লোড করা
+// ৩. তথ্য আপডেট ফাংশন
+document.getElementById('update-info-btn').onclick = async () => {
+    if(!currentEditDocId) return;
+    const name = document.getElementById('e-name').value.trim();
+    const shop = document.getElementById('e-shop').value.trim();
+    const phone = convertToEnglish(document.getElementById('e-phone').value.trim());
+
+    if(!name) return alert("নাম দিতেই হবে");
+
+    await updateDoc(doc(db, "customers", currentEditDocId), { name, shop, phone });
+    alert("তথ্য আপডেট হয়েছে!");
+};
+
+// ৪. ডাটা লোড ও লাইভ ফিল্টার
 function loadData() {
     onSnapshot(collection(db, "customers"), (snap) => {
-        let rows = ""; let tDue = 0;
+        allCustomers = [];
+        let totalDueCount = 0;
         snap.forEach(d => {
             const data = d.data();
-            tDue += data.totalDue;
-            rows += `
-                <tr>
-                    <td style="padding:12px;"><b>${data.customId}</b></td>
-                    <td style="padding:12px;">${data.name}<br><small>${data.shop}</small></td>
-                    <td style="padding:12px; color:red; font-weight:bold;">${data.totalDue} ৳</td>
-                    <td style="padding:12px;">
-                        <button onclick="delCust('${d.id}')" style="background:#fee2e2; color:#ef4444; border:none; padding:5px 8px; border-radius:4px; cursor:pointer;">মুছুন</button>
-                    </td>
-                </tr>`;
+            allCustomers.push({ id: d.id, ...data });
+            totalDueCount += (data.totalDue || 0);
         });
-        document.getElementById('customer-table-body').innerHTML = rows;
+        renderTable(allCustomers);
         document.getElementById('stat-total-cust').innerText = snap.size;
-        document.getElementById('stat-total-due').innerText = tDue + " ৳";
+        document.getElementById('stat-total-due').innerText = totalDueCount + " ৳";
     });
 }
 
-// ৬. লেনদেন আপডেট
+function renderTable(dataArray) {
+    let rows = "";
+    dataArray.forEach(data => {
+        rows += `<tr><td>${data.customId}</td><td>${data.name}<br><small>${data.shop}</small></td><td style="color:red; font-weight:bold;">${data.totalDue} ৳</td><td><button onclick="delCust('${data.id}')" style="background:#fee2e2; color:red; border:none; padding:5px; border-radius:4px; cursor:pointer;">মুছুন</button></td></tr>`;
+    });
+    document.getElementById('customer-table-body').innerHTML = rows;
+}
+
+// আইডি লিখলে টেবিল ফিল্টার হবে
+document.getElementById('t-id').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toLowerCase();
+    const filtered = allCustomers.filter(c => 
+        c.customId.toLowerCase().includes(searchVal) || 
+        c.name.toLowerCase().includes(searchVal)
+    );
+    renderTable(filtered);
+});
+
+// ৫. লেনদেন আপডেট সেভ
 document.getElementById('add-trans-btn').onclick = async () => {
     const cid = document.getElementById('t-id').value.trim();
-    const amt = Number(document.getElementById('t-amount').value);
+    const amt = Number(convertToEnglish(document.getElementById('t-amount').value.trim()));
     const type = document.querySelector('input[name="trans-type"]:checked').value;
 
-    if(!cid || !amt) return alert("আইডি এবং টাকা দিন");
-
+    if(!cid || isNaN(amt) || amt <= 0) return alert("সঠিক তথ্য দিন");
     const q = query(collection(db, "customers"), where("customId", "==", cid));
     const qs = await getDocs(q);
     
     if(!qs.empty) {
         const cDoc = qs.docs[0];
-        const newDue = type === 'due' ? cDoc.data().totalDue + amt : cDoc.data().totalDue - amt;
+        const newDue = type === 'due' ? (cDoc.data().totalDue + amt) : (cDoc.data().totalDue - amt);
         await updateDoc(doc(db, "customers", cDoc.id), { totalDue: newDue });
         await addDoc(collection(db, "transactions"), { 
-            cId: cid, amount: amt, type, 
-            time: new Date().toLocaleString('bn-BD'), ts: new Date() 
+            cId: cid, 
+            amount: amt, 
+            type, 
+            time: new Date().toLocaleString('bn-BD'), 
+            ts: new Date() 
         });
-        alert("হিসাব আপডেট সফল!");
-        document.getElementById('t-amount').value = '';
-        document.getElementById('t-id').value = '';
-        // আপডেট শেষ হলে টেবিল রিসেট
-        loadData();
-    } else { alert("ভুল আইডি!"); }
+        alert("লেনদেন সফল হয়েছে!");
+        document.getElementById('t-id').value = "";
+        document.getElementById('t-amount').value = "";
+        renderTable(allCustomers);
+    } else { alert("আইডিটি খুঁজে পাওয়া যায়নি!"); }
 };
 
-window.delCust = (id) => { if(confirm("মুছতে চান?")) deleteDoc(doc(db, "customers", id)); };
+window.delCust = (id) => { if(confirm("মুছবেন?")) deleteDoc(doc(db, "customers", id)); };
