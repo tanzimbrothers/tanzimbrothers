@@ -352,8 +352,8 @@ td {
 
     /* রেডিও বাটন মোবাইল ভিউ */
     .radio-group {
-        flex-wrap: nowrap;
-        justify-content: center;
+        flex-direction: column;
+        justify-content: space-evenly;
         
     }
 }
